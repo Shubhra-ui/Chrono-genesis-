@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chrono Genesis: Time Rift Explorer</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      font-family: Arial, sans-serif;
+      font-size: 18px;
+      z-index: 100;
+    }
+    #ui .button {
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid white;
+      margin: 5px 0;
+      cursor: pointer;
+    }
+    #ui .button:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+  </style>
+</head>
+<body>
+<div id="ui">
+  <div>WASD দিয়ে চলুন, Space দিয়ে টাইম থামান।</div>
+  <div class="button" onclick="changeTimeline()">টাইমলাইন পরিবর্তন করুন</div>
+  <div class="button" onclick="upgradeSkill()">স্কিল আপগ্রেড করুন</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three/examples/js/loaders/GLTFLoader.js"></script>
+<script>
+  // ========== 3D গেম সেটআপ ==========
+  const scene = new THREE.Scene();
+
+  // Skybox (টাইমলাইনের জন্য আলাদা পরিবেশ)
+  const skyboxes = {
+    prehistoric: [
+      'https://threejs.org/examples/textures/cube/Park2/posx.jpg',
+      'https://threejs.org/examples/textures/cube/Park2/negx.jpg',
+      'https://threejs.org/examples/textures/cube/Park2/posy.jpg',
+      'https://threejs.org/examples/textures/cube/Park2/negy.jpg',
+      'https://threejs.org/examples/textures/cube/Park2/posz.jpg',
+      'https://threejs.org/examples/textures/cube/Park2/negz.jpg',
+    ],
+    medieval: [
+      'https://threejs.org/examples/textures/cube/Bridge2/posx.jpg',
+      'https://threejs.org/examples/textures/cube/Bridge2/negx.jpg',
+      'https://threejs.org/examples/textures/cube/Bridge2/posy.jpg',
+      'https://threejs.org/examples/textures/cube/Bridge2/negy.jpg',
+      'https://threejs.org/examples/textures/cube/Bridge2/posz.jpg',
+      'https://threejs.org/examples/textures/cube/Bridge2/negz.jpg',
+    ],
+    future: [
+      'https://threejs.org/examples/textures/cube/MilkyWay/posx.jpg',
+      'https://threejs.org/examples/textures/cube/MilkyWay/negx.jpg',
+      'https://threejs.org/examples/textures/cube/MilkyWay/posy.jpg',
+      'https://threejs.org/examples/textures/cube/MilkyWay/negy.jpg',
+      'https://threejs.org/examples/textures/cube/MilkyWay/posz.jpg',
+      'https://threejs.org/examples/textures/cube/MilkyWay/negz.jpg',
+    ],
+  };
+
+  const loader = new THREE.CubeTextureLoader();
+  let currentTimeline = 'prehistoric'; // টাইমলাইনের ডিফল্ট সেটিং
+  scene.background = loader.load(skyboxes[currentTimeline]);
+
+  // ক্যামেরা সেটআপ
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 5, 20);
+
+  // রেন্ডারার সেটআপ
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  document.body.appendChild(renderer.domElement);
+
+  // আলো সেটআপ
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+  directionalLight.position.set(10, 20, 15);
+  directionalLight.castShadow = true;
+  scene.add(directionalLight);
+
+  const ambientLight = new THREE.AmbientLight(0x404040);
+  scene.add(ambientLight);
+
+  // ========== মাটি ==========
+  const groundGeometry = new THREE.PlaneGeometry(500, 500);
+  const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+  const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // ========== GLTF লোডার ==========
+  const loaderGLTF = new THREE.GLTFLoader();
+
+  // প্লেয়ার মডেল লোড করা
+  let player;
+  loaderGLTF.load(
+    'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb',
+    (gltf) => {
+      player = gltf.scene;
+      player.position.set(0, 1, 0);
+      player.scale.set(2, 2, 2);
+      scene.add(player);
+    }
+  );
+
+  // শত্রু মডেল লোড করা
+  let enemy;
+  loaderGLTF.load(
+    'https://threejs.org/examples/models/gltf/DamagedHelmet/glTF/DamagedHelmet.gltf',
+    (gltf) => {
+      enemy = gltf.scene;
+      enemy.position.set(10, 1, -10);
+      enemy.scale.set(2, 2, 2);
+      scene.add(enemy);
+    }
+  );
+
+  // ========== পোর্টাল ==========
+  const portalGeometry = new THREE.TorusGeometry(3, 0.5, 16, 100);
+  const portalMaterial = new THREE.MeshStandardMaterial({ color: 0x6a0dad });
+  const portal = new THREE.Mesh(portalGeometry, portalMaterial);
+  portal.rotation.x = Math.PI / 2;
+  portal.position.set(-50, 1, -50);
+  scene.add(portal);
+
+  // ========== মেকানিক্স ==========
+  const keys = {};
+  let timePaused = false;
+  let playerSpeed = 0.5;
+
+  window.addEventListener("keydown", (event) => {
+    keys[event.key] = true;
+    if (event.key === " ") timePaused = !timePaused; // টাইম থামানোর জন্য Space
+  });
+
+  window.addEventListener("keyup", (event) => keys[event.key] = false);
+
+  function movePlayer() {
+    if (!player) return; // প্লেয়ার মডেল লোড না হলে কিছু করবে না
+    if (keys["w"]) player.position.z -= playerSpeed;
+    if (keys["s"]) player.position.z += playerSpeed;
+    if (keys["a"]) player.position.x -= playerSpeed;
+    if (keys["d"]) player.position.x += playerSpeed;
+  }
+
+  function moveEnemy() {
+    if (!enemy || timePaused) return; // শত্রু মডেল লোড না হলে কিছু করবে না
+    const speed = 0.1;
+    if (enemy.position.x < player.position.x) enemy.position.x += speed;
+    if (enemy.position.x > player.position.x) enemy.position.x -= speed;
+    if (enemy.position.z < player.position.z) enemy.position.z += speed;
+    if (enemy.position.z > player.position.z) enemy.position.z -= speed;
+  }
+
+  function checkPortalInteraction() {
+    if (!player) return;
+    const distance = player.position.distanceTo(portal.position);
+    if (distance < 5) {
+      alert("পোর্টাল অ্যাক্টিভ হয়েছে! টাইমলাইন পরিবর্তন হচ্ছে।");
+      changeTimeline();
+    }
+  }
+
+  // টাইমলাইন পরিবর্তনের মেকানিক্স
+  function changeTimeline() {
+    const timelines = ['prehistoric', 'medieval', 'future'];
+    currentTimeline = timelines[(timelines.indexOf(currentTimeline) + 1) % timelines.length];
+    scene.background = loader.load(skyboxes[currentTimeline]);
+    alert(`আপনি ${currentTimeline} টাইমলাইনে প্রবেশ করেছেন!`);
+    player.position.set(0, 1, 0); // টাইমলাইন রিসেট
+    enemy.position.set(10, 1, -10); // শত্রু রিসেট
+  }
+
+  // স্কিল আপগ্রেড
+  function upgradeSkill() {
+    playerSpeed += 0.1;
+    alert(`আপনার স্কিল আপগ্রেড হয়েছে! নতুন স্পিড: ${playerSpeed}`);
+  }
+
+  // ========== অ্যানিমেশন ==========
+  function animate() {
+    requestAnimationFrame(animate);
+    movePlayer();
+    moveEnemy();
+checkPortalInteraction();
+ 
+122
+123
+ 
+ 
+ 
+ 
+portal.rotation.y
+ 
++=
+ 
+0.01;
+ 
+//
+ 
+পোর্টাল
+ 
+ঘোরানো
+ 
+124
+ 
+ 
+ 
+ 
+renderer.render(scene,
+ 
+camera);
+ 
+125
+ 
+ 
+}
+ 
+126
+127
+ 
+ 
+animate();
+ 
+128
+</script>
+ 
+129
+</body>
+ 
+130
+</html>
